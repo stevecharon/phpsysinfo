@@ -59,10 +59,45 @@ if (!defined('PSI_CONFIG_FILE')) {
         }
         $ip = preg_replace("/^::ffff:/", "", strtolower($ip));
 
-        if (!in_array($ip, $allowed, true)) {
-            echo "Client IP address not allowed";
-            die();
+        if (in_array($ip, $allowed)) {
+            $pass = true;  // Simple match
+        } else {
+            foreach ($allowed as $mask) {
+                if (substr($mask, -1) == '.' AND substr($ip, 0, strlen($mask)) == $mask) {
+                    $pass = true; // Case for 123.123. mask
+                }
+                if (strpos($mask, '*') === false) {
+                    continue; // No simple matching and no wildcard in the mask, leaves no chance to match
+                }
+                // Breaking into triads
+                $maskParts = explode('.', $mask);
+                $ipParts = explode('.', $ip);
+                foreach ($maskParts as $key => $maskPart) {
+                    if ($maskPart == '*') {
+                        continue;  // This triad is matching, continue with next triad
+                    } elseif (strpos($maskPart, '*') !== false) {
+                        // Case like 1*, 1*2, *1
+                        // Let's use regexp for this
+                        $regExp = str_replace('*', '\d{0,3}', $maskPart);
+                        if (preg_match('/^' . $regExp . '$/', $ipParts[$key])) {
+                            continue;  // Matching, go to check next triad
+                        } else {
+                            continue 2;  // Not matching, Go to check next mask
+                        }
+                    } else {
+                        if ($maskPart != $ipParts[$key]) {
+                            continue 2; // If triad has no wildcard and not matching, check next mask
+                        }
+                        // otherwise just continue
+                    }
+                }
+                // We checked all triads and all matched, hence this mask is matching
+                $pass = true;
+            }
+            // We went through all masks and none has matched.
+            $pass = false;
         }
+    if ($pass = false) { echo "Client IP Address $ip not allowed"; die();}
     }
 
     /* default error handler */
